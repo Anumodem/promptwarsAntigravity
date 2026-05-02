@@ -1,10 +1,10 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import KanbanBoard from '@/components/KanbanBoard';
 import TeamView from '@/components/TeamView';
 import SettingsView from '@/components/SettingsView';
 import CalendarView from '@/components/CalendarView';
-import { LayoutDashboard, Users, Settings, Bell, Search, Menu, X, Activity, Calendar } from 'lucide-react';
+import { LayoutDashboard, Users, Settings, Bell, Search, Menu, X, Activity, Calendar, LogIn, Chrome } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 type Tab = 'dashboard' | 'team' | 'calendar' | 'settings';
@@ -37,6 +37,28 @@ export default function Dashboard() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState(initialNotifications);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('flowsync-session');
+    if (saved) setIsLoggedIn(true);
+  }, []);
+
+  const handleGoogleLogin = () => {
+    setIsLoggingIn(true);
+    // Simulate Google Login delay
+    setTimeout(() => {
+      setIsLoggedIn(true);
+      setIsLoggingIn(false);
+      localStorage.setItem('flowsync-session', 'active');
+    }, 1500);
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    localStorage.removeItem('flowsync-session');
+  };
 
   const unreadCount = notifications.filter(n => n.unread).length;
 
@@ -47,6 +69,48 @@ export default function Dashboard() {
   const markOneRead = (id: number) => {
     setNotifications(notifications.map(n => n.id === id ? { ...n, unread: false } : n));
   };
+
+  if (!isLoggedIn) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-background relative overflow-hidden">
+        {/* Background blobs */}
+        <div className="absolute top-0 -left-20 w-96 h-96 bg-primary/20 rounded-full blur-[100px] animate-pulse"></div>
+        <div className="absolute bottom-0 -right-20 w-96 h-96 bg-purple-500/20 rounded-full blur-[100px] animate-pulse delay-700"></div>
+
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="glass p-12 rounded-[3rem] w-full max-w-md border border-white/20 shadow-2xl z-10 text-center"
+        >
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-2xl shadow-primary/30 mx-auto mb-8">
+            <span className="text-white font-black text-3xl">F</span>
+          </div>
+          <h1 className="text-4xl font-black tracking-tighter mb-2">Welcome to FlowSync</h1>
+          <p className="text-muted-foreground font-bold mb-10">Streamline your team's workflow in minutes.</p>
+          
+          <button 
+            onClick={handleGoogleLogin}
+            disabled={isLoggingIn}
+            className="w-full flex items-center justify-center gap-4 bg-white text-black hover:bg-gray-100 py-4 rounded-2xl transition-all shadow-xl font-black text-sm active:scale-95 disabled:opacity-70 border border-gray-200"
+          >
+            {isLoggingIn ? (
+              <div className="w-5 h-5 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <>
+                <Chrome size={20} className="text-primary" />
+                Continue with Google
+              </>
+            )}
+          </button>
+          
+          <p className="mt-8 text-[11px] text-muted-foreground font-bold uppercase tracking-widest leading-relaxed">
+            By continuing, you agree to FlowSync's <br />
+            <span className="text-primary hover:underline cursor-pointer">Terms of Service</span> & <span className="text-primary hover:underline cursor-pointer">Privacy Policy</span>
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground transition-colors duration-300">
@@ -106,10 +170,13 @@ export default function Dashboard() {
               </div>
               <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-4 border-background rounded-full"></div>
             </div>
-            <div className="text-left min-w-0">
+            <div className="text-left min-w-0 flex-1">
               <p className="text-sm font-black truncate">Jane Doe</p>
               <p className="text-[11px] text-muted-foreground truncate font-bold">Product Manager</p>
             </div>
+            <button onClick={handleLogout} className="text-muted-foreground hover:text-destructive p-1.5 rounded-lg hover:bg-destructive/10 transition-colors">
+              <LogIn size={16} className="rotate-180" />
+            </button>
           </div>
         </div>
       </aside>
