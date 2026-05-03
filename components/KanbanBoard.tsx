@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, Plus, X, Trash2, Edit3, ChevronDown, Calendar, CheckCircle2, AlertCircle } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
@@ -29,10 +29,10 @@ const initialTasks: Task[] = [
 ];
 
 const columns: { id: Status; title: string; color: string; icon: React.ReactNode }[] = [
-  { id: "todo", title: "To Do", color: "bg-slate-400", icon: <AlertCircle size={14} /> },
-  { id: "in-progress", title: "In Progress", color: "bg-blue-400", icon: <Clock size={14} /> },
-  { id: "review", title: "Review", color: "bg-amber-400", icon: <Edit3 size={14} /> },
-  { id: "done", title: "Done", color: "bg-emerald-400", icon: <CheckCircle2 size={14} /> },
+  { id: "todo", title: "To Do", color: "bg-slate-400", icon: <AlertCircle size={14} aria-hidden="true" /> },
+  { id: "in-progress", title: "In Progress", color: "bg-blue-400", icon: <Clock size={14} aria-hidden="true" /> },
+  { id: "review", title: "Review", color: "bg-amber-400", icon: <Edit3 size={14} aria-hidden="true" /> },
+  { id: "done", title: "Done", color: "bg-emerald-400", icon: <CheckCircle2 size={14} aria-hidden="true" /> },
 ];
 
 const priorityConfig = {
@@ -51,11 +51,113 @@ const assigneeColors: Record<string, string> = {
   "Emily Chen": "from-teal-500 to-cyan-500",
 };
 
-interface KanbanBoardProps {
-  searchQuery: string;
-}
+// Optimized Task Card Component
+const TaskCard = memo(({ task, index, onEdit, onDelete, onChangeStatus, statusMenuId, setStatusMenuId, deleteConfirmId, setDeleteConfirmId }: any) => {
+  return (
+    <Draggable key={task.id} draggableId={task.id} index={index}>
+      {(provided, snapshot) => (
+        <div 
+          ref={provided.innerRef} 
+          {...provided.draggableProps} 
+          {...provided.dragHandleProps} 
+          className="mb-4 outline-none"
+          style={{ ...provided.draggableProps.style }}
+          role="listitem"
+          aria-label={`Task: ${task.title}`}
+        >
+          <div className={`glass p-5 rounded-2xl cursor-grab active:cursor-grabbing border-2 transition-all duration-300 ${snapshot.isDragging ? 'shadow-2xl ring-4 ring-primary/20 scale-[1.03] rotate-1 z-50 border-primary' : 'hover:border-primary/40 hover:shadow-lg border-transparent'}`}>
+            <div className="flex justify-between items-start mb-4">
+              <span className={`text-[9px] font-black px-2.5 py-1 rounded-lg flex items-center gap-1.5 uppercase tracking-widest ${priorityConfig[task.priority].class}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${priorityConfig[task.priority].dot}`} aria-hidden="true"></span>
+                {priorityConfig[task.priority].label}
+              </span>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={(e) => { e.stopPropagation(); onEdit(task); }} className="text-muted-foreground hover:text-primary p-2 rounded-xl hover:bg-primary/10 transition-colors" aria-label="Edit Task">
+                  <Edit3 size={14} />
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(deleteConfirmId === task.id ? null : task.id); }} className="text-muted-foreground hover:text-destructive p-2 rounded-xl hover:bg-destructive/10 transition-colors" aria-label="Delete Task">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
 
-export default function KanbanBoard({ searchQuery }: KanbanBoardProps) {
+            <AnimatePresence>
+              {deleteConfirmId === task.id && (
+                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                  className="absolute inset-0 z-20 bg-background/95 rounded-2xl flex flex-col items-center justify-center p-5 text-center border-2 border-destructive/20 backdrop-blur-md">
+                  <p className="text-sm font-black mb-4">Delete this task?</p>
+                  <div className="flex gap-3 w-full">
+                    <button onClick={() => setDeleteConfirmId(null)} className="flex-1 py-2.5 rounded-xl bg-muted font-bold text-xs" aria-label="Cancel deletion">Cancel</button>
+                    <button onClick={() => onDelete(task.id)} className="flex-1 py-2.5 rounded-xl bg-destructive text-white font-bold text-xs shadow-lg shadow-destructive/20" aria-label="Confirm deletion">Delete</button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <h4 className="font-bold text-sm mb-2.5 leading-snug">{task.title}</h4>
+            
+            {task.description && (
+              <p className="text-xs text-muted-foreground line-clamp-2 mb-5 leading-relaxed font-medium">
+                {task.description}
+              </p>
+            )}
+
+            <div className="flex items-center justify-between pt-4 border-t border-border mt-auto">
+              <div className="flex items-center gap-2.5" aria-label={`Assigned to ${task.assignee}`}>
+                <div className={`w-7 h-7 rounded-lg bg-gradient-to-tr ${assigneeColors[task.assignee] || 'from-gray-500 to-gray-600'} flex items-center justify-center text-[10px] font-black text-white ring-2 ring-background shadow-md`}>
+                  {getInitials(task.assignee)}
+                </div>
+                <span className="text-xs font-bold text-muted-foreground">{task.assignee.split(' ')[0]}</span>
+              </div>
+
+              <div className="relative">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setStatusMenuId(statusMenuId === task.id ? null : task.id); }}
+                  aria-expanded={statusMenuId === task.id}
+                  aria-haspopup="listbox"
+                  className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl bg-secondary hover:bg-primary hover:text-white transition-all shadow-sm"
+                >
+                  Move <ChevronDown size={12} aria-hidden="true" />
+                </button>
+                
+                <AnimatePresence>
+                  {statusMenuId === task.id && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 12, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 12, scale: 0.95 }}
+                      className="absolute right-0 bottom-full mb-3 w-44 glass rounded-2xl shadow-2xl border border-border py-2 z-[60] max-h-48 overflow-y-auto custom-scrollbar"
+                      role="listbox"
+                    >
+                      <p className="px-3 pb-1.5 text-[9px] font-black text-muted-foreground uppercase tracking-widest border-b border-border/50 mb-1" aria-hidden="true">Set Status</p>
+                      {columns.map(c => (
+                        <button 
+                          key={c.id} 
+                          role="option"
+                          aria-selected={c.id === task.status}
+                          disabled={c.id === task.status}
+                          onClick={(e) => { e.stopPropagation(); onChangeStatus(task.id, c.id); }}
+                          className={`w-full text-left px-3 py-2.5 text-[10px] flex items-center gap-3 transition-all ${c.id === task.status ? 'opacity-30 cursor-not-allowed bg-muted/20' : 'hover:bg-primary/10 hover:text-primary font-bold'}`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${c.color}`} aria-hidden="true"></span>
+                          <span>{c.title}</span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </Draggable>
+  );
+});
+
+TaskCard.displayName = 'TaskCard';
+
+export default function KanbanBoard({ searchQuery }: { searchQuery: string }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isMounted, setIsMounted] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
@@ -72,8 +174,7 @@ export default function KanbanBoard({ searchQuery }: KanbanBoardProps) {
     const saved = localStorage.getItem('flowsync-tasks');
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        setTasks(parsed);
+        setTasks(JSON.parse(saved));
       } catch (e) {
         setTasks(initialTasks);
       }
@@ -88,18 +189,18 @@ export default function KanbanBoard({ searchQuery }: KanbanBoardProps) {
     }
   }, [tasks, isMounted]);
 
-  // Keyboard shortcuts
+  const handleKey = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setModalMode(null);
+      setDeleteConfirmId(null);
+      setStatusMenuId(null);
+    }
+  }, []);
+
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setModalMode(null);
-        setDeleteConfirmId(null);
-        setStatusMenuId(null);
-      }
-    };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, []);
+  }, [handleKey]);
 
   const filteredTasks = useMemo(() => {
     if (!searchQuery.trim()) return tasks;
@@ -107,36 +208,46 @@ export default function KanbanBoard({ searchQuery }: KanbanBoardProps) {
     return tasks.filter(t =>
       t.title.toLowerCase().includes(q) ||
       t.description.toLowerCase().includes(q) ||
-      t.assignee.toLowerCase().includes(q) ||
-      t.priority.toLowerCase().includes(q)
+      t.assignee.toLowerCase().includes(q)
     );
   }, [tasks, searchQuery]);
 
-  const onDragEnd = (result: DropResult) => {
+  const onDragEnd = useCallback((result: DropResult) => {
     if (!result.destination) return;
     const { source, destination } = result;
-    if (source.droppableId !== destination.droppableId || source.index !== destination.index) {
-      const newTasks = Array.from(tasks);
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
+
+    setTasks(prev => {
+      const newTasks = Array.from(prev);
       const draggedTaskIndex = newTasks.findIndex(t => t.id === result.draggableId);
       if (draggedTaskIndex > -1) {
         newTasks[draggedTaskIndex] = {
           ...newTasks[draggedTaskIndex],
           status: destination.droppableId as Status,
         };
-        setTasks(newTasks);
       }
-    }
-  };
+      return newTasks;
+    });
+  }, []);
 
-  const openCreateModal = () => {
-    setFormTitle(""); setFormDesc(""); setFormPriority("medium"); setFormAssignee(TEAM_MEMBERS[0]);
-    setEditingTask(null); setModalMode('create');
-  };
+  const changeStatus = useCallback((taskId: string, newStatus: Status) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+    setStatusMenuId(null);
+  }, []);
 
-  const openEditModal = (task: Task) => {
-    setFormTitle(task.title); setFormDesc(task.description); setFormPriority(task.priority); setFormAssignee(task.assignee);
-    setEditingTask(task); setModalMode('edit');
-  };
+  const deleteTask = useCallback((taskId: string) => {
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    setDeleteConfirmId(null);
+  }, []);
+
+  const openEditModal = useCallback((task: Task) => {
+    setFormTitle(task.title);
+    setFormDesc(task.description);
+    setFormPriority(task.priority);
+    setFormAssignee(task.assignee);
+    setEditingTask(task);
+    setModalMode('edit');
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,68 +263,33 @@ export default function KanbanBoard({ searchQuery }: KanbanBoardProps) {
         assignee: formAssignee,
         createdAt: new Date().toISOString(),
       };
-      setTasks([...tasks, newTask]);
+      setTasks(prev => [...prev, newTask]);
     } else if (modalMode === 'edit' && editingTask) {
-      setTasks(tasks.map(t => t.id === editingTask.id ? { ...t, title: formTitle, description: formDesc, priority: formPriority, assignee: formAssignee } : t));
+      setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, title: formTitle, description: formDesc, priority: formPriority, assignee: formAssignee } : t));
     }
     setModalMode(null);
   };
 
-  const handleDeleteTask = (taskId: string) => {
-    setTasks(tasks.filter(t => t.id !== taskId));
-    setDeleteConfirmId(null);
-  };
-
-  const changeStatus = (taskId: string, newStatus: Status) => {
-    setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
-    setStatusMenuId(null);
-  };
-
   if (!isMounted) return null;
 
-  // Sprint dates calculation (2 weeks)
-  const sprintStart = new Date();
-  sprintStart.setDate(sprintStart.getDate() - (sprintStart.getDay() === 0 ? 6 : sprintStart.getDay() - 1));
-  sprintStart.setHours(0,0,0,0);
-  const sprintEnd = new Date(sprintStart);
-  sprintEnd.setDate(sprintEnd.getDate() + 13);
-  const today = new Date();
-  const totalDays = 14;
-  const elapsed = Math.max(0, Math.ceil((today.getTime() - sprintStart.getTime()) / (1000*60*60*24)));
-  const daysLeft = Math.max(0, totalDays - elapsed);
-  const sprintPct = Math.min(100, Math.round((elapsed / totalDays) * 100));
-
-  // Stats
   const stats = {
     total: tasks.length,
     done: tasks.filter(t => t.status === 'done').length,
-    high: tasks.filter(t => t.priority === 'high' && t.status !== 'done').length,
   };
   const completionPct = stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0;
 
   return (
-    <div className="h-full flex flex-col relative" onClick={() => setStatusMenuId(null)}>
-      {/* Board Header - Compact and fixed alignment */}
+    <div className="h-full flex flex-col relative" onClick={() => setStatusMenuId(null)} role="region" aria-label="Kanban Board">
       <div className="flex flex-wrap justify-between items-start mb-8 gap-6 shrink-0">
         <div>
           <div className="flex items-center gap-3 mb-2">
             <h2 className="text-3xl font-black tracking-tighter">Project Sprint Alpha</h2>
-            <span className="bg-primary/10 text-primary text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-wider">Active</span>
-          </div>
-          <div className="flex items-center gap-4 text-xs font-bold text-muted-foreground">
-            <div className="flex items-center gap-2 bg-secondary/50 px-3 py-1.5 rounded-xl border border-border">
-              <Calendar size={14} className="text-primary" />
-              <span>{sprintStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {sprintEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-            </div>
-            <div className="flex items-center gap-2 bg-secondary/50 px-3 py-1.5 rounded-xl border border-border">
-              <Clock size={14} className={daysLeft <= 3 ? 'text-destructive' : 'text-primary'} />
-              <span className={daysLeft <= 3 ? 'text-destructive' : ''}>{daysLeft} days remaining</span>
-            </div>
+            <span className="bg-primary/10 text-primary text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-wider" role="status">Active</span>
           </div>
         </div>
         
         <div className="flex items-center gap-6">
-          <div className="hidden lg:flex flex-col items-end gap-2">
+          <div className="hidden lg:flex flex-col items-end gap-2" aria-label={`Sprint progress: ${completionPct}%`}>
             <div className="flex items-center gap-3 text-[11px] font-black text-muted-foreground uppercase tracking-widest">
               <span>Overall Completion</span>
               <span className="text-foreground">{completionPct}%</span>
@@ -226,28 +302,27 @@ export default function KanbanBoard({ searchQuery }: KanbanBoardProps) {
               />
             </div>
           </div>
-          <button onClick={openCreateModal} className="flex items-center gap-2.5 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3.5 rounded-2xl transition-all shadow-xl shadow-primary/20 font-black text-sm active:scale-95 group">
+          <button onClick={() => setModalMode('create')} className="flex items-center gap-2.5 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3.5 rounded-2xl transition-all shadow-xl shadow-primary/20 font-black text-sm active:scale-95 group" aria-label="Add New Task">
             <Plus size={20} className="group-hover:rotate-90 transition-transform" />
             Add New Task
           </button>
         </div>
       </div>
 
-      {/* Kanban Columns */}
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex gap-6 overflow-x-auto pb-4 flex-1 items-start custom-scrollbar">
+        <div className="flex gap-6 overflow-x-auto pb-4 flex-1 items-start custom-scrollbar" role="list" aria-label="Kanban Columns">
           {columns.map((column) => {
             const columnTasks = filteredTasks.filter(t => t.status === column.id);
             return (
-              <div key={column.id} className="min-w-[320px] w-[320px] flex flex-col bg-muted/30 p-5 rounded-[2rem] border border-border h-full overflow-hidden">
+              <div key={column.id} className="min-w-[320px] w-[320px] flex flex-col bg-muted/30 p-5 rounded-[2rem] border border-border h-full overflow-hidden" role="listitem">
                 <div className="flex items-center justify-between mb-5 shrink-0 px-2">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-xl ${column.color} bg-opacity-20 text-foreground`}>
+                    <div className={`p-2 rounded-xl ${column.color} bg-opacity-20 text-foreground`} aria-hidden="true">
                       {column.icon}
                     </div>
                     <h3 className="font-black text-sm uppercase tracking-widest">{column.title}</h3>
                   </div>
-                  <span className="bg-background/80 border border-border px-3 py-1 rounded-full text-[10px] font-black shadow-sm">
+                  <span className="bg-background/80 border border-border px-3 py-1 rounded-full text-[10px] font-black shadow-sm" aria-label={`${columnTasks.length} tasks`}>
                     {columnTasks.length}
                   </span>
                 </div>
@@ -258,102 +333,22 @@ export default function KanbanBoard({ searchQuery }: KanbanBoardProps) {
                       {...provided.droppableProps}
                       ref={provided.innerRef}
                       className={`flex-1 min-h-[150px] rounded-2xl transition-all duration-300 overflow-y-auto pr-1 custom-scrollbar ${snapshot.isDraggingOver ? 'bg-primary/5 ring-2 ring-primary/10' : ''}`}
+                      role="list"
+                      aria-label={`${column.title} column`}
                     >
                       {columnTasks.map((task, index) => (
-                        <Draggable key={task.id} draggableId={task.id} index={index}>
-                          {(provided, snapshot) => (
-                            <div 
-                              ref={provided.innerRef} 
-                              {...provided.draggableProps} 
-                              {...provided.dragHandleProps} 
-                              className="mb-4 outline-none"
-                              style={{ ...provided.draggableProps.style }}
-                            >
-                              <div className={`glass p-5 rounded-2xl cursor-grab active:cursor-grabbing border-2 transition-all duration-300 ${snapshot.isDragging ? 'shadow-2xl ring-4 ring-primary/20 scale-[1.03] rotate-1 z-50 border-primary' : 'hover:border-primary/40 hover:shadow-lg border-transparent'}`}>
-                                {/* Card Header */}
-                                <div className="flex justify-between items-start mb-4">
-                                  <span className={`text-[9px] font-black px-2.5 py-1 rounded-lg flex items-center gap-1.5 uppercase tracking-widest ${priorityConfig[task.priority].class}`}>
-                                    <span className={`w-1.5 h-1.5 rounded-full ${priorityConfig[task.priority].dot}`}></span>
-                                    {priorityConfig[task.priority].label}
-                                  </span>
-                                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={(e) => { e.stopPropagation(); openEditModal(task); }} className="text-muted-foreground hover:text-primary p-2 rounded-xl hover:bg-primary/10 transition-colors">
-                                      <Edit3 size={14} />
-                                    </button>
-                                    <button onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(deleteConfirmId === task.id ? null : task.id); }} className="text-muted-foreground hover:text-destructive p-2 rounded-xl hover:bg-destructive/10 transition-colors">
-                                      <Trash2 size={14} />
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {/* Delete confirmation overlay */}
-                                <AnimatePresence>
-                                  {deleteConfirmId === task.id && (
-                                    <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-                                      className="absolute inset-0 z-20 bg-background/95 rounded-2xl flex flex-col items-center justify-center p-5 text-center border-2 border-destructive/20 backdrop-blur-md">
-                                      <p className="text-sm font-black mb-4">Delete this task?</p>
-                                      <div className="flex gap-3 w-full">
-                                        <button onClick={() => setDeleteConfirmId(null)} className="flex-1 py-2.5 rounded-xl bg-muted font-bold text-xs">Cancel</button>
-                                        <button onClick={() => handleDeleteTask(task.id)} className="flex-1 py-2.5 rounded-xl bg-destructive text-white font-bold text-xs shadow-lg shadow-destructive/20">Delete</button>
-                                      </div>
-                                    </motion.div>
-                                  )}
-                                </AnimatePresence>
-
-                                <h4 className="font-bold text-sm mb-2.5 leading-snug">{task.title}</h4>
-                                
-                                {task.description && (
-                                  <p className="text-xs text-muted-foreground line-clamp-2 mb-5 leading-relaxed font-medium">
-                                    {task.description}
-                                  </p>
-                                )}
-
-                                {/* Card Footer */}
-                                <div className="flex items-center justify-between pt-4 border-t border-border mt-auto">
-                                  <div className="flex items-center gap-2.5">
-                                    <div className={`w-7 h-7 rounded-lg bg-gradient-to-tr ${assigneeColors[task.assignee] || 'from-gray-500 to-gray-600'} flex items-center justify-center text-[10px] font-black text-white ring-2 ring-background shadow-md`}>
-                                      {getInitials(task.assignee)}
-                                    </div>
-                                    <span className="text-xs font-bold text-muted-foreground">{task.assignee.split(' ')[0]}</span>
-                                  </div>
-
-                                  <div className="relative">
-                                    <button 
-                                      onClick={(e) => { e.stopPropagation(); setStatusMenuId(statusMenuId === task.id ? null : task.id); }}
-                                      className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl bg-secondary hover:bg-primary hover:text-white transition-all shadow-sm"
-                                    >
-                                      Move <ChevronDown size={12} />
-                                    </button>
-                                    
-                                    <AnimatePresence>
-                                      {statusMenuId === task.id && (
-                                        <motion.div 
-                                          initial={{ opacity: 0, y: 12, scale: 0.95 }}
-                                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                                          exit={{ opacity: 0, y: 12, scale: 0.95 }}
-                                          className="absolute right-0 bottom-full mb-3 w-44 glass rounded-2xl shadow-2xl border border-border py-2 z-[60] max-h-48 overflow-y-auto custom-scrollbar"
-                                        >
-                                          <p className="px-3 pb-1.5 text-[9px] font-black text-muted-foreground uppercase tracking-widest border-b border-border/50 mb-1">Set Status</p>
-                                          {columns.map(c => (
-                                            <button 
-                                              key={c.id} 
-                                              disabled={c.id === task.status}
-                                              onClick={(e) => { e.stopPropagation(); changeStatus(task.id, c.id); }}
-                                              className={`w-full text-left px-3 py-2.5 text-[10px] flex items-center gap-3 transition-all ${c.id === task.status ? 'opacity-30 cursor-not-allowed bg-muted/20' : 'hover:bg-primary/10 hover:text-primary font-bold'}`}
-                                            >
-                                              <span className={`w-2 h-2 rounded-full ${c.color}`}></span>
-                                              <span>{c.title}</span>
-                                            </button>
-                                          ))}
-                                        </motion.div>
-                                      )}
-                                    </AnimatePresence>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </Draggable>
+                        <TaskCard 
+                          key={task.id} 
+                          task={task} 
+                          index={index} 
+                          onEdit={openEditModal}
+                          onDelete={deleteTask}
+                          onChangeStatus={changeStatus}
+                          statusMenuId={statusMenuId}
+                          setStatusMenuId={setStatusMenuId}
+                          deleteConfirmId={deleteConfirmId}
+                          setDeleteConfirmId={setDeleteConfirmId}
+                        />
                       ))}
                       {provided.placeholder}
                     </div>
@@ -365,18 +360,21 @@ export default function KanbanBoard({ searchQuery }: KanbanBoardProps) {
         </div>
       </DragDropContext>
 
-      {/* Modals */}
       <AnimatePresence>
         {modalMode && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={() => setModalMode(null)}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label={modalMode === 'create' ? 'Create New Task' : 'Update Task Details'}
+          >
             <motion.div initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 20 }}
               onClick={(e) => e.stopPropagation()}
               className="glass p-10 rounded-[3rem] w-full max-w-xl border border-white/20 shadow-2xl">
               <div className="flex justify-between items-center mb-8">
                 <h3 className="text-3xl font-black tracking-tighter">{modalMode === 'create' ? 'Create New Task' : 'Update Task Details'}</h3>
-                <button onClick={() => setModalMode(null)} className="text-muted-foreground hover:text-foreground p-2.5 rounded-full hover:bg-muted transition-colors">
+                <button onClick={() => setModalMode(null)} className="text-muted-foreground hover:text-foreground p-2.5 rounded-full hover:bg-muted transition-colors" aria-label="Close modal">
                   <X size={24} />
                 </button>
               </div>
@@ -385,20 +383,21 @@ export default function KanbanBoard({ searchQuery }: KanbanBoardProps) {
                   <label className="block text-[10px] font-black text-muted-foreground mb-2.5 uppercase tracking-[0.2em]">Task Title</label>
                   <input autoFocus type="text" required value={formTitle} onChange={(e) => setFormTitle(e.target.value)}
                     className="w-full bg-secondary border border-border rounded-2xl px-5 py-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all shadow-sm"
-                    placeholder="E.g., Finalize design system" />
+                    placeholder="E.g., Finalize design system" aria-label="Task Title" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-black text-muted-foreground mb-2.5 uppercase tracking-[0.2em]">Detailed Description</label>
                   <textarea value={formDesc} onChange={(e) => setFormDesc(e.target.value)} rows={4}
                     className="w-full bg-secondary border border-border rounded-2xl px-5 py-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all resize-none shadow-sm"
-                    placeholder="Provide context for the team..." />
+                    placeholder="Provide context for the team..." aria-label="Detailed Description" />
                 </div>
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label className="block text-[10px] font-black text-muted-foreground mb-2.5 uppercase tracking-[0.2em]">Priority Level</label>
-                    <div className="flex gap-2.5">
+                    <div className="flex gap-2.5" role="radiogroup" aria-label="Priority Level">
                       {(['high', 'medium', 'low'] as Priority[]).map(p => (
                         <button key={p} type="button" onClick={() => setFormPriority(p)}
+                          role="radio" aria-checked={formPriority === p}
                           className={`flex-1 py-3 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest transition-all ${formPriority === p ? `${priorityConfig[p].class} border-primary shadow-lg scale-105` : 'bg-secondary border-transparent text-muted-foreground hover:border-border'}`}>
                           {p}
                         </button>
@@ -408,7 +407,8 @@ export default function KanbanBoard({ searchQuery }: KanbanBoardProps) {
                   <div>
                     <label className="block text-[10px] font-black text-muted-foreground mb-2.5 uppercase tracking-[0.2em]">Team Assignee</label>
                     <select value={formAssignee} onChange={e => setFormAssignee(e.target.value)}
-                      className="w-full bg-secondary border border-border rounded-2xl px-5 py-3.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer shadow-sm">
+                      className="w-full bg-secondary border border-border rounded-2xl px-5 py-3.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer shadow-sm"
+                      aria-label="Select Team Assignee">
                       {TEAM_MEMBERS.map(m => (
                         <option key={m} value={m}>{m}</option>
                       ))}
@@ -416,7 +416,7 @@ export default function KanbanBoard({ searchQuery }: KanbanBoardProps) {
                   </div>
                 </div>
                 <div className="flex gap-4 pt-8">
-                  <button type="button" onClick={() => setModalMode(null)} className="flex-1 px-6 py-4 rounded-2xl bg-muted font-black text-sm uppercase tracking-widest hover:bg-muted/80 transition-colors">
+                  <button type="button" onClick={() => setModalMode(null)} className="flex-1 px-6 py-4 rounded-2xl bg-muted font-black text-sm uppercase tracking-widest hover:bg-muted/80 transition-colors" aria-label="Cancel task creation">
                     Cancel
                   </button>
                   <button type="submit" className="flex-1 px-6 py-4 rounded-2xl bg-primary text-white font-black text-sm uppercase tracking-widest shadow-2xl shadow-primary/30 hover:bg-primary/90 transition-all active:scale-95">

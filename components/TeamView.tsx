@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Mail, MoreVertical, MessageSquare, Briefcase, Search, UserPlus, X, CheckCircle, Circle, Clock, Calendar, Palmtree, UserCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -60,15 +60,17 @@ export default function TeamView() {
   const [newEmail, setNewEmail] = useState('');
   const [filter, setFilter] = useState<'all' | 'online' | 'holiday'>('all');
 
-  const filtered = members.filter(m => {
-    const matchSearch = m.name.toLowerCase().includes(search.toLowerCase()) ||
-      m.role.toLowerCase().includes(search.toLowerCase());
-    if (filter === 'online') return matchSearch && m.online;
-    if (filter === 'holiday') return matchSearch && m.status === 'On Holiday';
-    return matchSearch;
-  });
+  const filtered = useMemo(() => {
+    return members.filter(m => {
+      const matchSearch = m.name.toLowerCase().includes(search.toLowerCase()) ||
+        m.role.toLowerCase().includes(search.toLowerCase());
+      if (filter === 'online') return matchSearch && m.online;
+      if (filter === 'holiday') return matchSearch && m.status === 'On Holiday';
+      return matchSearch;
+    });
+  }, [members, search, filter]);
 
-  const handleInvite = (e: React.FormEvent) => {
+  const handleInvite = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim() || !newRole.trim()) return;
     const newMember: Member = {
@@ -82,90 +84,93 @@ export default function TeamView() {
       color: memberColors[members.length % memberColors.length],
       joined: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
     };
-    setMembers([...members, newMember]);
+    setMembers(prev => [...prev, newMember]);
     setNewName(''); setNewRole(''); setNewEmail('');
     setIsInviteOpen(false);
-  };
+  }, [newName, newRole, newEmail, members.length]);
 
-  const holidayCount = members.filter(m => m.status === 'On Holiday').length;
+  const holidayCount = useMemo(() => members.filter(m => m.status === 'On Holiday').length, [members]);
+  const onlineCount = useMemo(() => members.filter(m => m.online).length, [members]);
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header section - Fixed */}
-      <div className="shrink-0 mb-6">
+    <div className="h-full flex flex-col" role="region" aria-label="Team Directory">
+      <header className="shrink-0 mb-6">
         <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
           <div>
             <h2 className="text-3xl font-black tracking-tight mb-1">Team Directory</h2>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground font-medium">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground font-medium" aria-label="Team statistics">
               <span><span className="text-foreground font-bold">{members.length}</span> Members</span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="text-emerald-500 font-bold">{members.filter(m => m.online).length}</span> Online
+              <span className="flex items-center gap-1.5" aria-label={`${onlineCount} members online`}>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true"></span>
+                <span className="text-emerald-500 font-bold">{onlineCount}</span> Online
               </span>
-              <span className="flex items-center gap-1.5">
-                <Palmtree size={14} className="text-purple-500" />
+              <span className="flex items-center gap-1.5" aria-label={`${holidayCount} members on holiday`}>
+                <Palmtree size={14} className="text-purple-500" aria-hidden="true" />
                 <span className="text-purple-500 font-bold">{holidayCount}</span> on Holiday
               </span>
             </div>
           </div>
           <button
             onClick={() => setIsInviteOpen(true)}
+            aria-label="Add new team member"
             className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-2xl transition-all shadow-lg shadow-primary/20 font-bold text-sm active:scale-95"
           >
-            <UserPlus size={18} />
+            <UserPlus size={18} aria-hidden="true" />
             Add Member
           </button>
         </div>
 
-        {/* Search + Filter bar */}
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[280px]">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} aria-hidden="true" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search by name, role or expertise..."
+              aria-label="Search members"
               className="w-full bg-secondary border border-border rounded-xl pl-12 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all shadow-sm"
             />
           </div>
-          <div className="flex gap-2 bg-secondary p-1 rounded-xl border border-border">
+          <nav className="flex gap-2 bg-secondary p-1 rounded-xl border border-border" aria-label="Filter members">
             {(['all', 'online', 'holiday'] as const).map(f => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
+                aria-pressed={filter === f}
                 className={`px-4 py-2 rounded-lg text-xs font-black transition-all capitalize ${filter === f ? 'bg-background text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
               >
                 {f}
               </button>
             ))}
-          </div>
+          </nav>
         </div>
-      </div>
+      </header>
 
-      {/* Team Cards Grid - Scrollable area */}
-      <div className="flex-1 overflow-y-auto pr-2 -mr-2 space-y-4 min-h-0 custom-scrollbar">
+      <section className="flex-1 overflow-y-auto pr-2 -mr-2 space-y-4 min-h-0 custom-scrollbar" role="list" aria-label="Team Members Grid">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-6">
           {filtered.map((member, index) => {
             const workload = workloadLevel(member.tasks);
             const StatusIcon = statusStyles[member.status].icon;
             
             return (
-              <motion.div
+              <motion.article
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: index * 0.05 }}
                 key={member.id}
                 className="glass p-6 rounded-3xl border border-border hover:border-primary/30 transition-all duration-300 group shadow-sm hover:shadow-xl hover:-translate-y-1"
+                role="listitem"
+                aria-label={`Team member: ${member.name}`}
               >
                 <div className="flex justify-between items-start mb-5">
                   <div className="relative">
                     <div className={`w-16 h-16 rounded-2xl bg-gradient-to-tr ${member.color} flex items-center justify-center text-white font-black text-2xl shadow-xl transform group-hover:rotate-3 transition-transform`}>
                       {getInitials(member.name)}
                     </div>
-                    <div className={`absolute -bottom-1.5 -right-1.5 w-5 h-5 rounded-full border-4 border-background ${member.online ? 'bg-emerald-500' : 'bg-muted-foreground'}`}></div>
+                    <div className={`absolute -bottom-1.5 -right-1.5 w-5 h-5 rounded-full border-4 border-background ${member.online ? 'bg-emerald-500' : 'bg-muted-foreground'}`} title={member.online ? 'Online' : 'Offline'}></div>
                   </div>
                   <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ${statusStyles[member.status].bg} ${statusStyles[member.status].text}`}>
-                    <StatusIcon size={12} />
+                    <StatusIcon size={12} aria-hidden="true" />
                     {member.status}
                   </div>
                 </div>
@@ -178,14 +183,14 @@ export default function TeamView() {
 
                 {member.status === 'On Holiday' && (
                   <div className="mb-5 p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center gap-2.5">
-                    <Calendar size={14} className="text-purple-500" />
+                    <Calendar size={14} className="text-purple-500" aria-hidden="true" />
                     <span className="text-[11px] font-bold text-purple-600">Away: {member.holidayDates || 'TBD'}</span>
                   </div>
                 )}
 
-                <div className="mb-6 space-y-2.5">
+                <div className="mb-6 space-y-2.5" aria-label={`Workload: ${member.tasks} active tasks`}>
                   <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                    <span className="flex items-center gap-1.5"><Briefcase size={12} /> Task Load</span>
+                    <span className="flex items-center gap-1.5"><Briefcase size={12} aria-hidden="true" /> Task Load</span>
                     <span className={workload.color}>{member.tasks} active</span>
                   </div>
                   <div className="w-full bg-secondary rounded-full h-2 overflow-hidden border border-border/50">
@@ -198,33 +203,23 @@ export default function TeamView() {
                 </div>
 
                 <div className="flex gap-2">
-                  <button className="flex-1 flex items-center justify-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary py-3 rounded-2xl transition-all text-xs font-black border border-primary/10">
-                    <MessageSquare size={14} />
+                  <button className="flex-1 flex items-center justify-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary py-3 rounded-2xl transition-all text-xs font-black border border-primary/10" aria-label={`Ping ${member.name}`}>
+                    <MessageSquare size={14} aria-hidden="true" />
                     Ping
                   </button>
-                  <button className="flex items-center justify-center w-12 bg-secondary hover:bg-muted border border-border py-3 rounded-2xl transition-all text-foreground">
-                    <Mail size={14} />
+                  <button className="flex items-center justify-center w-12 bg-secondary hover:bg-muted border border-border py-3 rounded-2xl transition-all text-foreground" aria-label={`Email ${member.name}`}>
+                    <Mail size={14} aria-hidden="true" />
                   </button>
-                  <button className="flex items-center justify-center w-12 bg-secondary hover:bg-muted border border-border py-3 rounded-2xl transition-all text-foreground">
-                    <MoreVertical size={14} />
+                  <button className="flex items-center justify-center w-12 bg-secondary hover:bg-muted border border-border py-3 rounded-2xl transition-all text-foreground" aria-label="More options">
+                    <MoreVertical size={14} aria-hidden="true" />
                   </button>
                 </div>
-              </motion.div>
+              </motion.article>
             );
           })}
-          {filtered.length === 0 && (
-            <div className="col-span-full text-center py-24 bg-secondary/30 rounded-3xl border-2 border-dashed border-border">
-              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4 text-muted-foreground">
-                <Search size={24} />
-              </div>
-              <p className="font-bold text-muted-foreground">No matches for your search query.</p>
-              <button onClick={() => {setSearch(''); setFilter('all');}} className="mt-4 text-primary font-bold text-sm hover:underline">Clear all filters</button>
-            </div>
-          )}
         </div>
-      </div>
+      </section>
 
-      {/* Invite Modal */}
       <AnimatePresence>
         {isInviteOpen && (
           <motion.div
@@ -232,6 +227,9 @@ export default function TeamView() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invite-title"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -240,27 +238,27 @@ export default function TeamView() {
               className="glass p-8 rounded-[2rem] w-full max-w-md border border-white/20 shadow-2xl"
             >
               <div className="flex justify-between items-center mb-8">
-                <h3 className="text-2xl font-black">Add New Member</h3>
-                <button onClick={() => setIsInviteOpen(false)} className="text-muted-foreground hover:text-foreground p-2 rounded-full hover:bg-muted transition-colors">
-                  <X size={24} />
+                <h3 id="invite-title" className="text-2xl font-black">Add New Member</h3>
+                <button onClick={() => setIsInviteOpen(false)} aria-label="Close dialog" className="text-muted-foreground hover:text-foreground p-2 rounded-full hover:bg-muted transition-colors">
+                  <X size={24} aria-hidden="true" />
                 </button>
               </div>
               <form onSubmit={handleInvite} className="space-y-5">
                 <div>
-                  <label className="block text-xs font-black text-muted-foreground mb-2 uppercase tracking-widest">Full Name</label>
-                  <input autoFocus required value={newName} onChange={e => setNewName(e.target.value)}
+                  <label htmlFor="member-name" className="block text-xs font-black text-muted-foreground mb-2.5 uppercase tracking-widest">Full Name</label>
+                  <input id="member-name" autoFocus required value={newName} onChange={e => setNewName(e.target.value)}
                     className="w-full bg-secondary border border-border rounded-2xl px-5 py-3.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
                     placeholder="Enter full name..." />
                 </div>
                 <div>
-                  <label className="block text-xs font-black text-muted-foreground mb-2 uppercase tracking-widest">Role</label>
-                  <input required value={newRole} onChange={e => setNewRole(e.target.value)}
+                  <label htmlFor="member-role" className="block text-xs font-black text-muted-foreground mb-2.5 uppercase tracking-widest">Role</label>
+                  <input id="member-role" required value={newRole} onChange={e => setNewRole(e.target.value)}
                     className="w-full bg-secondary border border-border rounded-2xl px-5 py-3.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
                     placeholder="e.g. Lead Designer" />
                 </div>
                 <div>
-                  <label className="block text-xs font-black text-muted-foreground mb-2 uppercase tracking-widest">Email</label>
-                  <input type="email" required value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                  <label htmlFor="member-email" className="block text-xs font-black text-muted-foreground mb-2.5 uppercase tracking-widest">Email</label>
+                  <input id="member-email" type="email" required value={newEmail} onChange={e => setNewEmail(e.target.value)}
                     className="w-full bg-secondary border border-border rounded-2xl px-5 py-3.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
                     placeholder="email@flowsync.io" />
                 </div>
