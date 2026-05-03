@@ -35,7 +35,7 @@ const columns: { id: Status; title: string; color: string; icon: React.ReactNode
   { id: "done", title: "Done", color: "bg-emerald-400", icon: <CheckCircle2 size={14} aria-hidden="true" /> },
 ];
 
-const priorityConfig = {
+const priorityConfig: Record<Priority, { label: string; class: string; dot: string }> = {
   high: { label: 'HIGH', class: 'bg-red-500/15 text-red-500', dot: 'bg-red-500' },
   medium: { label: 'MED', class: 'bg-yellow-500/15 text-yellow-500', dot: 'bg-yellow-500' },
   low: { label: 'LOW', class: 'bg-emerald-500/15 text-emerald-500', dot: 'bg-emerald-500' },
@@ -51,8 +51,20 @@ const assigneeColors: Record<string, string> = {
   "Emily Chen": "from-teal-500 to-cyan-500",
 };
 
+interface TaskCardProps {
+  task: Task;
+  index: number;
+  onEdit: (task: Task) => void;
+  onDelete: (id: string) => void;
+  onChangeStatus: (id: string, status: Status) => void;
+  statusMenuId: string | null;
+  setStatusMenuId: (id: string | null) => void;
+  deleteConfirmId: string | null;
+  setDeleteConfirmId: (id: string | null) => void;
+}
+
 // Optimized Task Card Component
-const TaskCard = memo(({ task, index, onEdit, onDelete, onChangeStatus, statusMenuId, setStatusMenuId, deleteConfirmId, setDeleteConfirmId }: any) => {
+const TaskCard = memo(({ task, index, onEdit, onDelete, onChangeStatus, statusMenuId, setStatusMenuId, deleteConfirmId, setDeleteConfirmId }: TaskCardProps) => {
   return (
     <Draggable key={task.id} draggableId={task.id} index={index}>
       {(provided, snapshot) => (
